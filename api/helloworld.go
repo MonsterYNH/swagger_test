@@ -18,7 +18,7 @@ type HelloworldLogic struct{}
 // @Router /greating [post]
 func (logic *HelloworldLogic) Greating(request *GreatingRequest) *GreatingResponse {
 	return &GreatingResponse{
-		Greating: fmt.Sprintf("Hello %s ~", request.Name),
+		Greating: fmt.Sprintf("Hello %s ~ ", request.Name),
 	}
 }
 
