@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 )
 
@@ -73,6 +74,60 @@ func Handler(configFns ...func(*Config)) http.HandlerFunc {
 			http.Redirect(w, r, h.Prefix+"index.html", 301)
 		default:
 			h.ServeHTTP(w, r)
+		}
+	}
+}
+
+func GinHandler(configFns ...func(*Config)) gin.HandlerFunc {
+	var once sync.Once
+
+	config := &Config{
+		URL:          "doc.json",
+		DeepLinking:  true,
+		DocExpansion: "list",
+		DomID:        "#swagger-ui",
+	}
+	for _, configFn := range configFns {
+		configFn(config)
+	}
+
+	// create a template with name
+	t := template.New("swagger_index.html")
+	index, _ := t.Parse(indexTempl)
+
+	var re = regexp.MustCompile(`^(.*/)([^?].*)?[?|.]*$`)
+
+	return func(c *gin.Context) {
+		matches := re.FindStringSubmatch(c.Request.RequestURI)
+		path := matches[2]
+
+		h := swaggerFiles.Handler
+		once.Do(func() {
+			h.Prefix = matches[1]
+		})
+
+		switch filepath.Ext(path) {
+		case ".html":
+			c.Header("Content-Type", "text/html; charset=utf-8")
+		case ".css":
+			c.Header("Content-Type", "text/css; charset=utf-8")
+		case ".js":
+			c.Header("Content-Type", "application/javascript")
+		case ".png":
+			c.Header("Content-Type", "image/png")
+		case ".json":
+			c.Header("Content-Type", "application/json; charset=utf-8")
+		}
+
+		switch path {
+		case "index.html":
+			_ = index.Execute(c.Writer, config)
+		case "doc.json":
+			_, _ = c.Writer.Write(config.JsonData)
+		case "":
+			http.Redirect(c.Writer, c.Request, h.Prefix+"index.html", 301)
+		default:
+			h.ServeHTTP(c.Writer, c.Request)
 		}
 	}
 }
