@@ -3,20 +3,25 @@ package main
 import (
 	"log"
 	"net/http"
+	"swag_init/api"
 	"swag_init/swagger"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
-	mux, err := swagger.NewSwaggerRouter(&swagger.Routeronfig{
+	m := mux.NewRouter()
+	if err := swagger.NewSwaggerRouter(m, &swagger.Routeronfig{
 		SearchDirs: []string{"."},
 		APIFile:    "main.go",
 		BasePath:   "/",
 		Host:       "http://localhost:1323",
-	})
-	if err != nil {
+	}); err != nil {
 		panic(err)
 	}
 
-	log.Fatal(http.ListenAndServe(":1323", mux))
+	m.HandleFunc("/greating", api.Greating)
+
+	log.Fatal(http.ListenAndServe(":1323", m))
 
 }

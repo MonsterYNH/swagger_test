@@ -193,11 +193,6 @@ func SetDebugger(logger Debugger) func(parser *Parser) {
 	}
 }
 
-// ParseAPI parses general api info for given searchDir and mainAPIFile.
-func (parser *Parser) ParseAPI(searchDir string, mainAPIFile string, parseDepth int) error {
-	return parser.ParseAPIMultiSearchDir([]string{searchDir}, mainAPIFile, parseDepth)
-}
-
 // ParseAPIMultiSearchDir is like ParseAPI but for multiple search dirs.
 func (parser *Parser) ParseAPIMultiSearchDir(searchDirs []string, mainAPIFile string, parseDepth int) error {
 	for _, searchDir := range searchDirs {
@@ -1669,21 +1664,4 @@ func (parser *Parser) Skip(path string, f os.FileInfo) error {
 // GetSwagger returns *spec.Swagger which is the root document object for the API specification.
 func (parser *Parser) GetSwagger() *spec.Swagger {
 	return parser.swagger
-}
-
-// addTestType just for tests.
-func (parser *Parser) addTestType(typename string) {
-	if parser.parsedSchemas == nil {
-		parser.parsedSchemas = make(map[*TypeSpecDef]*Schema)
-	}
-	if parser.packages.uniqueDefinitions == nil {
-		parser.packages.uniqueDefinitions = make(map[string]*TypeSpecDef)
-	}
-	typeDef := &TypeSpecDef{}
-	parser.packages.uniqueDefinitions[typename] = typeDef
-	parser.parsedSchemas[typeDef] = &Schema{
-		PkgPath: "",
-		Name:    typename,
-		Schema:  PrimitiveSchema(OBJECT),
-	}
 }
