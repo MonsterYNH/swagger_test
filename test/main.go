@@ -17,7 +17,7 @@ func main() {
 	}
 }
 
-func ParseDir(dir string) error {
+func ParseDir(dir string, filters ...FuncDescFilter) error {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
 	if err != nil {
@@ -27,14 +27,21 @@ func ParseDir(dir string) error {
 	fileDescs := []FileDesc{}
 	for _, pkg := range pkgs {
 		for fileName, file := range pkg.Files {
-			ast.Print(fset, file)
-			fileDesc, err := ParseFile(fileName, file)
+			// ast.Print(fset, file)
+			fileDesc, err := ParseFile(fileName, file, filters...)
 			if err != nil {
 				return err
 			}
 			fileDescs = append(fileDescs, *fileDesc)
 		}
 	}
+
+	// for _, fileDesc := range fileDescs {
+	// 	for _, funcDesc := range fileDesc.Funcs {
+	// 		for _, callExprDesc := range funcDesc.CallExprs {
+	// 		}
+	// 	}
+	// }
 
 	bytes, _ := json.Marshal(fileDescs)
 	fmt.Println(string(bytes))
@@ -58,14 +65,13 @@ type FuncDesc struct {
 }
 
 type FuncItem struct {
-	SelectorX   string
-	SelectorSel string
-	Name        string
+	Name string
+	Type string
 }
 
 type FuncCallExpr struct {
-	Selector FuncSelectorDesc
-	Args     []FuncArgDesc
+	Name string
+	Args []string
 }
 
 type FuncSelectorDesc struct {
@@ -73,38 +79,7 @@ type FuncSelectorDesc struct {
 	Sel string
 }
 
-type FuncArgDesc struct {
-	Kind        string
-	Value       string
-	IsObject    bool
-	Op          string
-	Name        string
-	SelectorX   string
-	SelectorSel string
-}
-
 type FuncDescFilter func(FuncDesc) bool
-
-func genSwaggerComment(desc FuncDesc) []string {
-	if !(len(desc.Params) == 1 && desc.Params[0].SelectorX == "gin" && desc.Params[0].SelectorSel == "Context") {
-		return nil
-	}
-
-	name := desc.Params[0].Name
-
-	comments := []string{}
-	for _, callExpr := range desc.CallExprs {
-		if callExpr.Selector.X != name {
-			continue
-		}
-
-		switch callExpr.Selector.Sel {
-		case "BindJSON":
-
-		}
-	}
-
-}
 
 func ParseFile(fileName string, file *ast.File, filters ...FuncDescFilter) (*FileDesc, error) {
 	dir, _ := os.Getwd()
@@ -149,46 +124,12 @@ func ParseFile(fileName string, file *ast.File, filters ...FuncDescFilter) (*Fil
 		ast.Inspect(desc, func(n ast.Node) bool {
 			switch nodeEntry := n.(type) {
 			case *ast.CallExpr:
-				funcEntry, ok := nodeEntry.Fun.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-
 				funcCallExpr := FuncCallExpr{
-					Selector: FuncSelectorDesc{},
-					Args:     []FuncArgDesc{},
+					Name: ExprString(nodeEntry.Fun),
+					Args: []string{},
 				}
-				if funcEntry.X != nil {
-					xEntry, ok := funcEntry.X.(*ast.Ident)
-					if ok {
-						funcCallExpr.Selector.X = xEntry.Name
-					}
-				}
-				funcCallExpr.Selector.Sel = funcEntry.Sel.Name
-
 				for _, argEntry := range nodeEntry.Args {
-					argDesc := FuncArgDesc{}
-					switch arg := argEntry.(type) {
-					case *ast.UnaryExpr:
-						if arg.X != nil {
-							argDesc.Name = arg.X.(*ast.Ident).Name
-							argDesc.IsObject = arg.X.(*ast.Ident).Obj != nil
-						}
-						argDesc.Op = arg.Op.String()
-					case *ast.BasicLit:
-						argDesc.Kind = arg.Kind.String()
-						argDesc.Value = arg.Value
-					case *ast.Ident:
-						argDesc.Name = arg.Name
-					case *ast.SelectorExpr:
-						if arg.X != nil {
-							argDesc.SelectorX = arg.X.(*ast.Ident).Name
-						}
-						argDesc.SelectorSel = arg.Sel.Name
-					default:
-						// log.Println("[ERROR] argEntry %v is unknown", argEntry)
-					}
-					funcCallExpr.Args = append(funcCallExpr.Args, argDesc)
+					funcCallExpr.Args = append(funcCallExpr.Args, ExprString(argEntry))
 				}
 
 				funcDesc.CallExprs = append(funcDesc.CallExprs, funcCallExpr)
@@ -217,24 +158,10 @@ func parseFuncItem(fields []*ast.Field) []FuncItem {
 
 	for _, field := range fields {
 		for _, nameEntry := range field.Names {
-			funcItem := FuncItem{
+			items = append(items, FuncItem{
 				Name: nameEntry.Name,
-			}
-
-			switch typeEntry := field.Type.(type) {
-			case *ast.Ident:
-				funcItem.SelectorSel = typeEntry.Name
-			case *ast.StarExpr:
-				switch entry := typeEntry.X.(type) {
-				case *ast.SelectorExpr:
-					funcItem.SelectorSel = entry.Sel.Name
-					if entry.X != nil {
-						funcItem.SelectorX = entry.X.(*ast.Ident).Name
-					}
-				}
-			}
-
-			items = append(items, funcItem)
+				Type: ExprString(field.Type),
+			})
 		}
 	}
 

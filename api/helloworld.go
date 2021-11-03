@@ -12,10 +12,10 @@ import (
 // @Tags 测试
 // @Accept json
 // @Produce json
-// @Param request body GreatingRequest true "asdasd"
+// @Param request body []GreatingRequest true "asdasd"
 // @Success 200 {object} GreatingResponse
 // @Router /greating [post]
-func Greating(rw http.ResponseWriter, r *http.Request) {
+func Greating(rw http.ResponseWriter, r *http.Request) (int, string) {
 	var (
 		request  GreatingRequest
 		response GreatingResponse
@@ -31,10 +31,12 @@ func Greating(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if err = json.Unmarshal(bytes, &request); err != nil {
-		return
+		return 1, ""
 	}
 
 	response.Greating = fmt.Sprintf("Hello %s ~", request.Name)
+
+	return 2, ""
 }
 
 type GreatingRequest struct {

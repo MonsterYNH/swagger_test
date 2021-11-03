@@ -5,6 +5,10 @@ import (
 )
 
 func main() {
-	parse.ParseDir("./api")
+	build, err := parse.ParseDir("example/gin", "func(*gin.Context)")
+	if err != nil {
+		panic(err)
+	}
 
+	build.Print(true)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"swag_init/example/gin/models"
 	"swag_init/swagger"
 
 	"github.com/gin-gonic/gin"
@@ -18,31 +19,26 @@ import (
 // @Router /greating [post]
 func SayHello(c *gin.Context) {
 	var (
-		request  GreatingRequest
-		response GreatingResponse
+		request  models.GreatingRequest
+		response models.GreatingResponse
 		err      error
 	)
+	response, d := models.GreatingResponse{}, models.GreatingResponse{}
 
 	defer func() {
 		c.JSON(http.StatusOK, response)
 	}()
 
+	fmt.Println(d)
+
 	if err = c.ShouldBindJSON(&request); err != nil {
 		return
 	}
 
-	response = GreatingResponse{
+	response = models.GreatingResponse{
 		Greating: fmt.Sprintf("Hello %s ~", request.Name),
 	}
 
-}
-
-type GreatingRequest struct {
-	Name string `json:"name"`
-}
-
-type GreatingResponse struct {
-	Greating string `json:"greating"`
 }
 
 func main() {

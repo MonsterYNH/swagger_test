@@ -8,7 +8,7 @@ import (
 
 type Data struct{}
 
-func SayHello(d int, c *gin.Context) {
+func SayHello(c *gin.Context) {
 	var data Data
 	request := models.GreatingRequest{}
 	c.BindHeader(&data)
@@ -26,7 +26,7 @@ func SayHello(d int, c *gin.Context) {
 	// c.ShouldBindXML(&data)
 	// c.ShouldBindYAML(&data)
 
-	// c.Query("name")
+	c.Query("name")
 	// c.QueryArray("name")
 	// c.QueryMap("name")
 

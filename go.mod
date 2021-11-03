@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/KyleBanks/depth v1.2.1
+	github.com/fatih/astrewrite v0.0.0-20191207154002-9094e544fcef
 	github.com/gin-gonic/gin v1.7.4
 	github.com/go-openapi/spec v0.20.4
 	github.com/gorilla/mux v1.8.0
