@@ -37,11 +37,11 @@ type FunctionDesc struct {
 type FuncItem struct {
 	Name string
 	Type string
-	Pos  string
 }
 
 type ExprItem struct {
-	CallName string
+	Receiver string
+	Name     string
 	Args     []ExprArgItem
 }
 
@@ -80,7 +80,7 @@ func parseFuncItem(fields *ast.FieldList, fset token.FileSet) []FuncItem {
 			items = append(items, FuncItem{
 				Name: nameEntry.Name,
 				Type: ExprString(field.Type),
-				Pos:  fset.Position(nameEntry.Pos()).String(),
+				// Pos:  fset.Position(nameEntry.Pos()).String(),
 			})
 			// fmt.Println("params", nameEntry.Name, ExprString(field.Type))
 		}

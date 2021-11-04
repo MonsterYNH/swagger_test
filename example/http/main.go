@@ -11,14 +11,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// @Summary 测试SayHello
-// @Description 向你说Hello
-// @Tags 测试
-// @Accept json
-// @Produce json
-// @Param request body GreatingRequest true "asdasd"
-// @Success 200 {object} GreatingResponse
-// @Router /greating [post]
 func SayHello(rw http.ResponseWriter, r *http.Request) {
 	var (
 		request  GreatingRequest

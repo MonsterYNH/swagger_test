@@ -1,7 +1,5 @@
 package parse
 
-import "fmt"
-
 type CommentConfig struct {
 	swaggerTag string
 }
@@ -38,15 +36,24 @@ func (desc *GinSwagger) SwaggerProduce() (string, error) {
 
 func (desc *GinSwagger) SwaggerParams() ([]string, error) {
 	params := []string{}
-	for _, item := range desc.Exprs {
-		switch item.CallName {
-		case "c.ShouldBindJSON":
-			if len(item.Args) != 1 {
-				return nil, fmt.Errorf("[ERROR] wrong func format %s", desc.Name)
-			}
-			params = append(params, fmt.Sprintf("// @Params %s %s %s %t %s", desc.Name, "body", "models.GreatingRequest", true, item.Args[0].Name))
-		}
-	}
+	// for _, item := range desc.Exprs {
+	// 	switch item.CallName {
+	// 	case "c.ShouldBindJSON":
+	// 		if len(item.Args) != 1 {
+	// 			return nil, fmt.Errorf("[ERROR] wrong func format %s", desc.Name)
+	// 		}
+	// 		params = append(params, fmt.Sprintf("// @Params %s %s %s %t %s", desc.Name, "body", "models.GreatingRequest", true, item.Args[0].Name))
+	// 	}
+	// }
 
 	return params, nil
 }
+
+// func (desc *GinSwagger) SwaggerSuccess() (string, error) {
+// 	for _, item := range desc.Exprs {
+// 		switch item.CallName {
+// 		case "c.JSON":
+
+// 		}
+// 	}
+// }

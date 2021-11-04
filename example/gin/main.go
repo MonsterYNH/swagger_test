@@ -17,21 +17,18 @@ import (
 // @Param request body GreatingRequest true "asdasd"
 // @Success 200 {object} GreatingResponse
 // @Router /greating [post]
-func SayHello(c *gin.Context) {
+func SayHello(ctx *gin.Context) {
 	var (
 		request  models.GreatingRequest
 		response models.GreatingResponse
 		err      error
 	)
-	response, d := models.GreatingResponse{}, models.GreatingResponse{}
 
 	defer func() {
-		c.JSON(http.StatusOK, response)
+		ctx.JSON(http.StatusOK, response)
 	}()
 
-	fmt.Println(d)
-
-	if err = c.ShouldBindJSON(&request); err != nil {
+	if err = ctx.ShouldBindJSON(&request); err != nil {
 		return
 	}
 
