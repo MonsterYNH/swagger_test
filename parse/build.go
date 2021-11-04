@@ -17,14 +17,14 @@ func (build Build) Print(format bool) {
 }
 
 type File struct {
-	Name   string
-	source *ast.File
+	Name string
+	// source *ast.File
 
 	Functions []FunctionDesc
 }
 
 type FunctionDesc struct {
-	source *ast.FuncDecl
+	// source *ast.FuncDecl
 
 	Name    string
 	Params  []FuncItem
@@ -47,7 +47,7 @@ type ExprItem struct {
 
 type ExprArgItem struct {
 	Name string
-	Pos  string
+	Type string
 }
 
 func NewBuild() *Build {
@@ -62,8 +62,8 @@ func (build *Build) AddFile(name string, file *File) {
 
 func NewFile(name string, source *ast.File) *File {
 	return &File{
-		Name:      name,
-		source:    source,
+		Name: name,
+		// source:    source,
 		Functions: make([]FunctionDesc, 0),
 	}
 }
