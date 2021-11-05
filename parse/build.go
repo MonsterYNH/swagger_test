@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/token"
 )
 
 type Build struct {
@@ -17,18 +16,20 @@ func (build Build) Print(format bool) {
 }
 
 type File struct {
-	Name string
-	// source *ast.File
+	Name   string
+	source *ast.File
 
 	Functions []FunctionDesc
 }
 
 type FunctionDesc struct {
-	// source *ast.FuncDecl
+	source *ast.FuncDecl
 
-	Name    string
-	Params  []FuncItem
-	Results []FuncItem
+	Comments    []string
+	Name        string
+	PackageName string
+	Params      []FuncItem
+	Results     []FuncItem
 
 	Vars  map[string]FuncItem
 	Exprs map[string]ExprItem
@@ -62,29 +63,17 @@ func (build *Build) AddFile(name string, file *File) {
 
 func NewFile(name string, source *ast.File) *File {
 	return &File{
-		Name: name,
-		// source:    source,
+		Name:      name,
+		source:    source,
 		Functions: make([]FunctionDesc, 0),
 	}
 }
 
-func parseFuncItem(fields *ast.FieldList, fset token.FileSet) []FuncItem {
-	items := []FuncItem{}
+func (build *Build) GetFiles() []*ast.File {
+	files := []*ast.File{}
 
-	if fields == nil || fields.List == nil {
-		return items
+	for _, file := range build.files {
+		files = append(files, file.source)
 	}
-
-	for _, field := range fields.List {
-		for _, nameEntry := range field.Names {
-			items = append(items, FuncItem{
-				Name: nameEntry.Name,
-				Type: ExprString(field.Type),
-				// Pos:  fset.Position(nameEntry.Pos()).String(),
-			})
-			// fmt.Println("params", nameEntry.Name, ExprString(field.Type))
-		}
-	}
-
-	return items
+	return files
 }

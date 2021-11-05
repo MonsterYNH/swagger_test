@@ -1,33 +1,58 @@
 package parse
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
+	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-type SwaggerAble interface {
-	SwaggerSummary() (string, error)
-	SwaggerDescription() (string, error)
-	SwaggerAccept() (string, error)
-	SwaggerProduce() (string, error)
-	SwaggerParams() (string, error)
-	SwaggerSuccess() (string, error)
-	// SwaggerFailures() (string, error)
-}
+var (
+	commentRegExp = regexp.MustCompile("@(Summary|Description|Accept|Produce|Params|Success)")
+)
 
 type GinSwagger struct {
 	*FunctionDesc
+	comments []string
+}
+
+func (desc *GinSwagger) genSwaggerComment(routeInfos map[string]gin.RouteInfo) {
+
+	desc.comments = append(desc.comments, desc.SwaggerSummary())
+	desc.comments = append(desc.comments, desc.SwaggerAccept())
+	desc.comments = append(desc.comments, desc.SwaggerProduce())
+	desc.comments = append(desc.comments, desc.SwaggerSuccess())
+	desc.comments = append(desc.comments, desc.SwaggerParams()...)
+	for key := range routeInfos {
+		if strings.HasPrefix(key, desc.PackageName) {
+			desc.comments = append(desc.comments, desc.SwaggerRoute(routeInfos[key]))
+		}
+	}
+}
+
+func (desc *GinSwagger) mergeComments(comments []string) []string {
+	commentMap := map[string][]string{}
+	for _, comment := range desc.comments {
+		if _, exist := commentMap[comment]; exist {
+			log.Println("[WARNING] comment %s already exist")
+			continue
+		}
+		commentMap[comment] = struct{}{}
+	}
+
+	newComments := make([]string, 0)
+	for _, comment := range comments {
+		if strings.HasPrefix("// @Summary")
+	}
 }
 
 func (desc *GinSwagger) SwaggerSummary() string {
 	// @Summary 测试SayHello
 	return fmt.Sprintf("// @Summary %s", desc.Name)
-}
-
-func (desc *GinSwagger) SwaggerDescription() string {
-	// @Description 向你说Hello
-	return fmt.Sprintf("// @Description %s", desc.Name)
 }
 
 func (desc *GinSwagger) SwaggerAccept() string {
@@ -73,4 +98,11 @@ func (desc *GinSwagger) SwaggerSuccess() string {
 		}
 	}
 	return result
+}
+
+func (desc *GinSwagger) SwaggerRoute(routeInfo gin.RouteInfo) string {
+	bytes, _ := json.Marshal(routeInfo)
+	fmt.Println(string(bytes))
+	// @Router /greating [post]
+	return fmt.Sprintf("// @Router %s [%s]", routeInfo.Path, strings.ToLower(routeInfo.Method))
 }

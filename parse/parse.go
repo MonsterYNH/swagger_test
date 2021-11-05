@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-func ParseDir(path string, filterStr string) (*Build, error) {
+func ParseDir(path string, filterStr string, routeInfos map[string]gin.RouteInfo) (*Build, error) {
 	var fileSet token.FileSet
 
 	packages, err := parser.ParseDir(&fileSet, path, nil, parser.ParseComments)
@@ -31,7 +33,7 @@ func ParseDir(path string, filterStr string) (*Build, error) {
 		for name, astTree := range pkg.Files {
 			baseName := filepath.Base(name)
 
-			fileAST, err := ParseFileAST(baseName, astTree, fileSet, filterStr)
+			fileAST, err := ParseFileAST(baseName, astTree, fileSet, filterStr, routeInfos)
 			if err != nil {
 				return nil, err
 			}
@@ -47,7 +49,7 @@ func ParseDir(path string, filterStr string) (*Build, error) {
 	return build, nil
 }
 
-func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr string) (*File, error) {
+func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr string, routeInfos map[string]gin.RouteInfo) (*File, error) {
 	file := NewFile(name, tree)
 
 	config := types.Config{
@@ -61,15 +63,8 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 		Defs: make(map[*ast.Ident]types.Object),
 		// 被使用的标示符
 		Uses: make(map[*ast.Ident]types.Object),
-		// 隐藏节点，匿名import包，type-specific时的case对应的当前类型，声明函数的匿名参数如var func(int)
-		Implicits: make(map[ast.Node]types.Object),
 		// 选择器,只能针对类型/对象.字段/method的选择，package.API这种不会记录在这里
 		Selections: make(map[*ast.SelectorExpr]*types.Selection),
-		// scope 记录当前库scope下的所有域，*ast.File/*ast.FuncType/... 都属于scope，详情看Scopes说明
-		// scope关系: 最外层Universe scope,之后Package scope，其他子scope
-		Scopes: make(map[ast.Node]*types.Scope),
-		// 记录所有package级的初始化值
-		InitOrder: make([]*types.Initializer, 0, 0),
 	}
 
 	if _, err := config.Check("", &fileSet, []*ast.File{tree}, &info); err != nil {
@@ -95,13 +90,26 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 			log.Printf("[INFO] match %s named %s at line %s", except, decValue.Name.Name, fileSet.Position(decValue.Pos()))
 
 			functionDesc := FunctionDesc{
-				// source: decValue,
+				source: decValue,
 
-				Name:    decValue.Name.Name,
-				Params:  parseFuncItemInfo(decValue.Type.Params, info),
-				Results: parseFuncItemInfo(decValue.Type.Results, info),
-				Vars:    make(map[string]FuncItem),
-				Exprs:   make(map[string]ExprItem),
+				Name:        decValue.Name.Name,
+				Comments:    make([]string, 0),
+				PackageName: fmt.Sprintf("%s.%s", tree.Name.Name, decValue.Name.Name),
+				Params:      parseFuncItemInfo(decValue.Type.Params, info),
+				Results:     parseFuncItemInfo(decValue.Type.Results, info),
+				Vars:        make(map[string]FuncItem),
+				Exprs:       make(map[string]ExprItem),
+			}
+
+			if decValue.Doc != nil && decValue.Doc.List != nil {
+				for _, comment := range decValue.Doc.List {
+					functionDesc.Comments = append(functionDesc.Comments, comment.Text)
+				}
+			}
+
+			if decValue.Recv != nil && decValue.Recv.List != nil {
+				recv := decValue.Recv.List[0]
+				functionDesc.PackageName = fmt.Sprintf("%s.%s.%s", tree.Name.Name, strings.TrimPrefix(ExprString(recv.Type), "*"), decValue.Name.Name)
 			}
 
 			ast.Inspect(decValue.Body, func(n ast.Node) bool {
@@ -154,33 +162,12 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 
 				return true
 			})
-			functionDescs = append(functionDescs, functionDesc)
-			s := GinSwagger{FunctionDesc: &functionDesc}
-			commentGroup := &ast.CommentGroup{
-				List: make([]*ast.Comment, 0),
-			}
 
-			commentGroup.List = append(commentGroup.List, &ast.Comment{
-				Text: s.SwaggerSummary(),
-			})
-			commentGroup.List = append(commentGroup.List, &ast.Comment{
-				Text: s.SwaggerDescription(),
-			})
-			commentGroup.List = append(commentGroup.List, &ast.Comment{
-				Text: s.SwaggerAccept(),
-			})
-			commentGroup.List = append(commentGroup.List, &ast.Comment{
-				Text: s.SwaggerProduce(),
-			})
-			commentGroup.List = append(commentGroup.List, &ast.Comment{
-				Text: s.SwaggerSuccess(),
-			})
-			for _, comment := range s.SwaggerParams() {
-				commentGroup.List = append(commentGroup.List, &ast.Comment{
-					Text: comment,
-				})
-			}
-			decValue.Doc = commentGroup
+			functionDescs = append(functionDescs, functionDesc)
+
+			s := &GinSwagger{FunctionDesc: &functionDesc}
+
+			decValue.Doc = s.genSwaggerComment(routeInfos)
 
 			printer.Fprint(os.Stdout, &fileSet, decValue)
 
@@ -217,4 +204,12 @@ func parseFuncItemInfo(node *ast.FieldList, info types.Info) []FuncItem {
 	}
 
 	return items
+}
+
+func GetGinRouteInfos(app *gin.Engine) map[string]gin.RouteInfo {
+	routes := make(map[string]gin.RouteInfo)
+	for _, info := range app.Routes() {
+		routes[info.Handler] = info
+	}
+	return routes
 }

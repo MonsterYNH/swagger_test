@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type T struct{}
+
 // @Summary 测试SayHello
 // @Description 向你说Hello
 // @Tags 测试
@@ -17,7 +19,7 @@ import (
 // @Param request body GreatingRequest true "asdasd"
 // @Success 200 {object} GreatingResponse
 // @Router /greating [post]
-func SayHello(ctx *gin.Context) {
+func (t *T) SayHello(ctx *gin.Context) {
 	var (
 		request  models.GreatingRequest
 		response models.GreatingResponse
@@ -48,7 +50,9 @@ func main() {
 		Host:       "http://localhost:1323",
 	})
 
-	app.POST("/greating", SayHello)
+	t := T{}
+
+	app.POST("/greating", t.SayHello)
 
 	app.Run(":1323")
 }

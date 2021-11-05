@@ -310,6 +310,40 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 	return nil
 }
 
+func (parser *Parser) GinSwagger(fileTree *ast.File) error {
+	var err error
+	err = parser.packages.CollectAstFile(".", "./main.go", fileTree)
+	if err != nil {
+		return err
+	}
+	parser.swagger.Swagger = "2.0"
+
+	for _, comment := range fileTree.Comments {
+		comments := strings.Split(comment.Text(), "\n")
+		if !isGeneralAPIComment(comments) {
+			continue
+		}
+		err = parseGeneralAPIInfo(parser, comments)
+		if err != nil {
+			return err
+		}
+	}
+
+	parser.parsedSchemas, err = parser.packages.ParseTypes()
+	if err != nil {
+		return err
+	}
+
+	err = parser.packages.RangeFiles(parser.ParseRouterAPIInfo)
+	if err != nil {
+		return err
+	}
+
+	parser.renameRefSchemas()
+
+	return parser.checkOperationIDUniqueness()
+}
+
 func parseGeneralAPIInfo(parser *Parser, comments []string) error {
 	previousAttribute := ""
 
