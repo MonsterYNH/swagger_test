@@ -1,18 +1,12 @@
 package parse
 
 import (
-	"encoding/json"
-	"fmt"
 	"go/ast"
+	"go/token"
 )
 
 type Build struct {
 	files map[string]*File
-}
-
-func (build Build) Print(format bool) {
-	bytes, _ := json.MarshalIndent(build, "", "  ")
-	fmt.Println(string(bytes))
 }
 
 type File struct {
@@ -23,8 +17,8 @@ type File struct {
 }
 
 type FunctionDesc struct {
-	source *ast.FuncDecl
-
+	source      *ast.FuncDecl
+	fset        token.FileSet
 	Comments    []string
 	Name        string
 	PackageName string
@@ -32,7 +26,7 @@ type FunctionDesc struct {
 	Results     []FuncItem
 
 	Vars  map[string]FuncItem
-	Exprs map[string]ExprItem
+	Exprs []ExprItem
 }
 
 type FuncItem struct {
@@ -47,8 +41,9 @@ type ExprItem struct {
 }
 
 type ExprArgItem struct {
-	Name string
-	Type string
+	Name  string
+	Type  string
+	Value string
 }
 
 func NewBuild() *Build {

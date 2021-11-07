@@ -15,7 +15,7 @@ import (
 func main() {
 	app := gin.Default()
 	t := T{}
-	app.GET("/", t.test)
+	app.GET("/order/:id", t.test)
 
 	infos := parse.GetGinRouteInfos(app)
 
@@ -27,7 +27,7 @@ func main() {
 	p := parser.New()
 
 	for _, file := range build.GetFiles() {
-		if err := p.GinSwagger(file); err != nil {
+		if err := p.GinSwagger("", "", file); err != nil {
 			panic(err)
 		}
 	}
@@ -59,6 +59,28 @@ func main() {
 type T struct{}
 
 func (t T) test(c *gin.Context) {
+	var err error
+	if err != nil {
+		c.JSON(http.StatusBadRequest, map[string]interface{}{})
+		return
+	}
+	c.ShouldBindJSON(&t)
+	c.Query("1")
+	c.QueryArray("2")
+	c.QueryMap("3")
+	c.BindQuery(&t)
+	c.DefaultQuery("4", "1")
+	c.GetQuery("5")
+	c.GetQueryArray("6")
+	c.GetQueryMap("7")
+	c.ShouldBindQuery("8")
+
+	fmt.Println(c.Param("id"))
+
+	// c.JSONP(http.StatusOK, map[string]interface{}{})
+	// c.XML(http.StatusOK, map[string]interface{}{})
+	// c.YAML(http.StatusOK, map[string]interface{}{})
+	// c.ProtoBuf(http.StatusOK, map[string]interface{}{})
 	c.JSON(http.StatusOK, map[string]interface{}{
 		"asd": "asd",
 	})

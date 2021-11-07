@@ -1,7 +1,6 @@
 package parse
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -12,97 +11,220 @@ import (
 )
 
 var (
-	commentRegExp = regexp.MustCompile("@(Summary|Description|Accept|Produce|Params|Success)")
+	// commentRegExp = regexp.MustCompile("@(Summary|Description|Accept|Produce|Params|Success|Failure|Response|Header|Router)")
+
+	commentSummaryRegExp     = regexp.MustCompile(`@Summary (.*)`)
+	commentDiscriptionRegExp = regexp.MustCompile(`@Description (.*)`)
+	commentMimeRegExp        = regexp.MustCompile(`@(Accept|Produce) (json-api|json-stream|xml|plain|html|mpfd|x-www-form-urlencoded|json|octet-stream|png|jpeg|gif)`)
+	commentParamRegExp       = regexp.MustCompile("@Params (.*) (query|path|header|body|formData) (.*) (true|false) (.*)")
+	commentResponseRegExp    = regexp.MustCompile(`@(Success|Failure|Response)`)
+	commentHeaderRegExp      = regexp.MustCompile("@Header")
+	commentRouterRegExp      = regexp.MustCompile(`@Router (.*) (.*) (.*)`)
+	commentPathParamRegExp   = regexp.MustCompile(`((:|\*)(\w*))|(\{(\w*)\})`)
 )
 
 type GinSwagger struct {
-	*FunctionDesc
-	comments []string
+	FunctionDesc
+	summaries    []string
+	descriptions []string
+	params       []string
+	failures     []string
+	headers      []string
+	accept       string
+	produce      string
+	success      string
+	response     string
+	router       string
+
+	others []string
 }
 
-func (desc *GinSwagger) genSwaggerComment(routeInfos map[string]gin.RouteInfo) {
+func GetGinComments(funcDesc FunctionDesc, routeInfos map[string]gin.RouteInfo) []string {
 
-	desc.comments = append(desc.comments, desc.SwaggerSummary())
-	desc.comments = append(desc.comments, desc.SwaggerAccept())
-	desc.comments = append(desc.comments, desc.SwaggerProduce())
-	desc.comments = append(desc.comments, desc.SwaggerSuccess())
-	desc.comments = append(desc.comments, desc.SwaggerParams()...)
-	for key := range routeInfos {
+	results := []string{}
+
+	desc := &GinSwagger{
+		FunctionDesc: funcDesc,
+		summaries:    make([]string, 0),
+		descriptions: make([]string, 0),
+		params:       make([]string, 0),
+		failures:     make([]string, 0),
+		headers:      make([]string, 0),
+	}
+
+	desc.parseComments()
+	desc.generateComments(routeInfos)
+
+	results = append(results, desc.summaries...)
+	results = append(results, desc.descriptions...)
+	results = append(results, desc.params...)
+	results = append(results, desc.failures...)
+	results = append(results, desc.headers...)
+	results = append(results, desc.others...)
+	if desc.accept != "" {
+		results = append(results, desc.accept)
+	}
+	if desc.produce != "" {
+		results = append(results, desc.produce)
+	}
+	if desc.success != "" {
+		results = append(results, desc.success)
+	}
+	if desc.response != "" {
+		results = append(results, desc.response)
+	}
+	if desc.router != "" {
+		results = append(results, desc.router)
+	}
+
+	sort.Strings(results)
+
+	return results
+}
+
+func (desc *GinSwagger) parseComments() {
+	for _, comment := range desc.Comments {
+		if commentSummaryRegExp.MatchString(comment) {
+			desc.summaries = append(desc.summaries, comment)
+		} else if commentDiscriptionRegExp.MatchString(comment) {
+			desc.descriptions = append(desc.descriptions, comment)
+		} else if commentParamRegExp.MatchString(comment) {
+			desc.params = append(desc.params, comment)
+		} else if commentResponseRegExp.MatchString(comment) {
+			if strings.HasPrefix(comment, "// @Success") {
+				desc.success = comment
+			} else if strings.HasPrefix(comment, "// @Failure") {
+				desc.failures = append(desc.failures, comment)
+			} else if strings.HasPrefix(comment, "// @Response") {
+				desc.response = comment
+			} else {
+				desc.others = append(desc.others, comment)
+			}
+		} else if commentHeaderRegExp.MatchString(comment) {
+			desc.headers = append(desc.headers, comment)
+		} else if commentMimeRegExp.MatchString(comment) {
+			if strings.HasPrefix(comment, "// @Accept") {
+				desc.accept = comment
+			} else if strings.HasPrefix(comment, "// @Produce") {
+				desc.produce = comment
+			}
+		} else if commentRouterRegExp.MatchString(comment) {
+			desc.router = comment
+		} else {
+			desc.others = append(desc.others, comment)
+		}
+	}
+}
+
+func (desc *GinSwagger) generateComments(routeInfos map[string]gin.RouteInfo) {
+	// Summery
+	genSummary := fmt.Sprintf("// @Summary %s", desc.Name)
+	isHasSummary := false
+	for _, summary := range desc.summaries {
+		if summary == genSummary {
+			isHasSummary = true
+			break
+		}
+	}
+	if !isHasSummary {
+		desc.summaries = append([]string{genSummary}, desc.summaries...)
+	}
+
+	pathParams := map[string]string{}
+
+	// Param
+	for _, callExpr := range desc.Exprs {
+		selector := fmt.Sprintf("%s.%s", callExpr.Receiver, callExpr.Name)
+
+		// Response
+		switch selector {
+		case "*github.com/gin-gonic/gin.Context.JSON", "*github.com/gin-gonic/gin.Context.JSONP":
+			if callExpr.Args[0].Name == "http.StatusOK" || callExpr.Args[0].Value == "200" {
+				if len(desc.success) > 0 {
+					log.Printf("[WARNING] func %s has many success response %s at line %s\n", desc.Name, callExpr.Args[1].Type, desc.fset.Position(desc.source.Pos()))
+				}
+				desc.success = fmt.Sprintf("// @Success %s {object} %s", callExpr.Args[0].Value, callExpr.Args[1].Type)
+			} else {
+				desc.failures = append(desc.failures, fmt.Sprintf("// @Failure %s {object} %s", callExpr.Args[0].Value, callExpr.Args[1].Type))
+			}
+		case "*github.com/gin-gonic/gin.Context.XML":
+			log.Printf("[WARNING] not support %s generate response", selector)
+		case "*github.com/gin-gonic/gin.Context.YAML":
+			log.Printf("[WARNING] not support %s generate response", selector)
+		case "*github.com/gin-gonic/gin.Context.ProtoBuf":
+			log.Printf("[WARNING] not support %s generate response", selector)
+		}
+
+		// Param Query
+		argName := strings.Trim(callExpr.Args[0].Name, `"`)
+		switch selector {
+		// query
+		case "*github.com/gin-gonic/gin.Context.Query":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query string false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.QueryArray":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query []string false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.QueryMap":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query object false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.DefaultQuery":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query object false %s default(%s)", argName, callExpr.Args[0].Value, callExpr.Args[1].Value))
+		case "*github.com/gin-gonic/gin.Context.GetQuery":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query object false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.GetQueryArray":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query []string false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.GetQueryMap":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query object false %s", argName, callExpr.Args[0].Value))
+		case "*github.com/gin-gonic/gin.Context.ShouldBindQuery":
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s query %s false %s", argName, callExpr.Args[0].Type, callExpr.Args[0].Name))
+		// path param
+		case "*github.com/gin-gonic/gin.Context.Param":
+			pathParams[strings.Trim(callExpr.Args[0].Value, `"`)] = callExpr.Args[0].Name
+			desc.params = append(desc.params, fmt.Sprintf("// @Param %s path %s true %s", argName, callExpr.Args[0].Type, callExpr.Args[0].Name))
+		default:
+			// log.Printf("[ERROR] generate swagger Params not support %s method at func %s", selector, desc.fset.Position(desc.source.Pos()))
+		}
+	}
+
+	for key, info := range routeInfos {
 		if strings.HasPrefix(key, desc.PackageName) {
-			desc.comments = append(desc.comments, desc.SwaggerRoute(routeInfos[key]))
+			if len(desc.router) > 0 {
+				// check swagger Router format
+				swaggerQueryParams := parseQueryPathParams(desc.router)
+				swaggerFormat := commentPathParamRegExp.ReplaceAllString(desc.router, "@@")
+				pathFormat := commentPathParamRegExp.ReplaceAllString(info.Path, "@@")
+				if !strings.ContainsAny(swaggerFormat, pathFormat) {
+					log.Printf("[ERROR] swagger comment %s is not match gin path %s\n", desc.router, info.Path)
+					return
+				}
+				if len(swaggerQueryParams) != len(pathParams) {
+					log.Printf("[ERROR] swagger comment %s's params is not match gin path %s\n", desc.router, info.Path)
+					return
+				}
+				for _, param := range swaggerQueryParams {
+					if _, exist := pathParams[param]; !exist {
+						log.Printf("[ERROR] query path %s, path param %s is not found in func %s %s\n", info.Path, param, desc.Name, desc.fset.Position(desc.source.Pos()))
+						return
+					}
+				}
+			} else {
+				// generate swagger Route comment
+				path := commentPathParamRegExp.ReplaceAllStringFunc(info.Path, func(s string) string {
+					str := strings.TrimPrefix(strings.TrimPrefix(s, ":"), "*")
+					return "{" + str + "}"
+				})
+				desc.router = fmt.Sprintf("// @Router %s [%s] %s", path, info.Method, desc.PackageName)
+			}
 		}
 	}
 }
 
-func (desc *GinSwagger) mergeComments(comments []string) []string {
-	commentMap := map[string][]string{}
-	for _, comment := range desc.comments {
-		if _, exist := commentMap[comment]; exist {
-			log.Println("[WARNING] comment %s already exist")
-			continue
-		}
-		commentMap[comment] = struct{}{}
+func parseQueryPathParams(path string) []string {
+	results := []string{}
+	paramStrs := commentPathParamRegExp.FindAllString(path, -1)
+	for _, param := range paramStrs {
+		str := strings.TrimPrefix(strings.TrimPrefix(param, ":"), "*")
+		str = strings.TrimSuffix(strings.TrimPrefix(str, "{"), "}")
+		results = append(results, str)
+
 	}
-
-	newComments := make([]string, 0)
-	for _, comment := range comments {
-		if strings.HasPrefix("// @Summary")
-	}
-}
-
-func (desc *GinSwagger) SwaggerSummary() string {
-	// @Summary 测试SayHello
-	return fmt.Sprintf("// @Summary %s", desc.Name)
-}
-
-func (desc *GinSwagger) SwaggerAccept() string {
-	// @Accept json
-	return "// @Accept json"
-}
-
-func (desc *GinSwagger) SwaggerProduce() string {
-	// @Produce json
-	return "// @Produce json"
-}
-
-func (desc *GinSwagger) SwaggerParams() []string {
-	params := []string{}
-
-	selectors := []string{}
-	for selector := range desc.Exprs {
-		selectors = append(selectors, selector)
-	}
-
-	sort.Strings(selectors)
-
-	for _, selector := range selectors {
-		switch selector {
-		case "*github.com/gin-gonic/gin.Context.ShouldBindJSON":
-			arg := desc.Exprs[selector].Args[0]
-			argType := strings.Split(arg.Type, "/")
-			params = append(params, fmt.Sprintf("// @Params %s %s %s %t %s", arg.Name, "body", argType[len(argType)-1], true, arg.Name))
-		}
-	}
-
-	return params
-}
-
-func (desc *GinSwagger) SwaggerSuccess() string {
-	result := ""
-	for selector, callExpr := range desc.Exprs {
-		switch selector {
-		case "*github.com/gin-gonic/gin.Context.JSON":
-			// @Success 200 {object} GreatingResponse
-			argType := strings.Split(callExpr.Args[1].Type, "/")
-			result = fmt.Sprintf("// @Success 200 {object} %s", argType[len(argType)-1])
-		}
-	}
-	return result
-}
-
-func (desc *GinSwagger) SwaggerRoute(routeInfo gin.RouteInfo) string {
-	bytes, _ := json.Marshal(routeInfo)
-	fmt.Println(string(bytes))
-	// @Router /greating [post]
-	return fmt.Sprintf("// @Router %s [%s]", routeInfo.Path, strings.ToLower(routeInfo.Method))
+	return results
 }

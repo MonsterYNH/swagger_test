@@ -310,7 +310,7 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 	return nil
 }
 
-func (parser *Parser) GinSwagger(fileTree *ast.File) error {
+func (parser *Parser) GinSwagger(dir string, fileName string, fileTree *ast.File) error {
 	var err error
 	err = parser.packages.CollectAstFile(".", "./main.go", fileTree)
 	if err != nil {
@@ -318,25 +318,46 @@ func (parser *Parser) GinSwagger(fileTree *ast.File) error {
 	}
 	parser.swagger.Swagger = "2.0"
 
-	for _, comment := range fileTree.Comments {
-		comments := strings.Split(comment.Text(), "\n")
-		if !isGeneralAPIComment(comments) {
-			continue
-		}
-		err = parseGeneralAPIInfo(parser, comments)
-		if err != nil {
-			return err
-		}
-	}
-
 	parser.parsedSchemas, err = parser.packages.ParseTypes()
 	if err != nil {
 		return err
 	}
 
-	err = parser.packages.RangeFiles(parser.ParseRouterAPIInfo)
-	if err != nil {
-		return err
+	for _, astDescription := range fileTree.Decls {
+		astDeclaration, ok := astDescription.(*ast.FuncDecl)
+		if ok && astDeclaration.Doc != nil && astDeclaration.Doc.List != nil {
+			// for per 'function' comment, create a new 'Operation' object
+			operation := NewOperation(parser, SetCodeExampleFilesDirectory(parser.codeExampleFilesDir))
+			for _, comment := range astDeclaration.Doc.List {
+				err := operation.ParseComment(comment.Text, fileTree)
+				if err != nil {
+					return fmt.Errorf("ParseComment error in file %s :%+v", fileName, err)
+				}
+			}
+
+			for _, routeProperties := range operation.RouterProperties {
+				var pathItem spec.PathItem
+				var ok bool
+
+				pathItem, ok = parser.swagger.Paths.Paths[routeProperties.Path]
+				if !ok {
+					pathItem = spec.PathItem{}
+				}
+
+				// check if we already have a operation for this path and method
+				if hasRouteMethodOp(pathItem, routeProperties.HTTPMethod) {
+					err := fmt.Errorf("route %s %s is declared multiple times", routeProperties.HTTPMethod, routeProperties.Path)
+					if parser.Strict {
+						return err
+					}
+					parser.debug.Printf("warning: %s\n", err)
+				}
+
+				setRouteMethodOp(&pathItem, routeProperties.HTTPMethod, &operation.Operation)
+
+				parser.swagger.Paths.Paths[routeProperties.Path] = pathItem
+			}
+		}
 	}
 
 	parser.renameRefSchemas()

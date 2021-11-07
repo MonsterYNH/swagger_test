@@ -33,7 +33,7 @@ func ParseDir(path string, filterStr string, routeInfos map[string]gin.RouteInfo
 		for name, astTree := range pkg.Files {
 			baseName := filepath.Base(name)
 
-			fileAST, err := ParseFileAST(baseName, astTree, fileSet, filterStr, routeInfos)
+			fileAST, err := ParseFileAST(baseName, astTree, fileSet, routeInfos, filterStr)
 			if err != nil {
 				return nil, err
 			}
@@ -49,8 +49,7 @@ func ParseDir(path string, filterStr string, routeInfos map[string]gin.RouteInfo
 	return build, nil
 }
 
-func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr string, routeInfos map[string]gin.RouteInfo) (*File, error) {
-	file := NewFile(name, tree)
+func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, routeInfos map[string]gin.RouteInfo, filterStr string) (*File, error) {
 
 	config := types.Config{
 		Importer: importer.ForCompiler(&fileSet, "source", nil),
@@ -73,12 +72,16 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 
 	functionDescs := []FunctionDesc{}
 
+	fileComments := []*ast.CommentGroup{}
+
 	for _, declaration := range tree.Decls {
+
 		switch decValue := declaration.(type) {
 		case *ast.FuncDecl:
 			expr, err := parser.ParseExpr(filterStr)
 			if err != nil {
-				return nil, err
+				log.Println(err)
+				continue
 			}
 
 			except := strings.ReplaceAll(ExprString(expr), " ", "")
@@ -88,9 +91,9 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 			}
 
 			log.Printf("[INFO] match %s named %s at line %s", except, decValue.Name.Name, fileSet.Position(decValue.Pos()))
-
 			functionDesc := FunctionDesc{
 				source: decValue,
+				fset:   fileSet,
 
 				Name:        decValue.Name.Name,
 				Comments:    make([]string, 0),
@@ -98,7 +101,7 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 				Params:      parseFuncItemInfo(decValue.Type.Params, info),
 				Results:     parseFuncItemInfo(decValue.Type.Results, info),
 				Vars:        make(map[string]FuncItem),
-				Exprs:       make(map[string]ExprItem),
+				Exprs:       make([]ExprItem, 0),
 			}
 
 			if decValue.Doc != nil && decValue.Doc.List != nil {
@@ -146,17 +149,23 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 							continue
 						}
 
+						var value string
+						if argType.Value != nil {
+							value = argType.Value.ExactString()
+						}
+
 						args = append(args, ExprArgItem{
-							Type: argType.Type.String(),
-							Name: ExprString(argEntry),
+							Type:  argType.Type.String(),
+							Name:  ExprString(argEntry),
+							Value: value,
 						})
 					}
 
-					functionDesc.Exprs[fmt.Sprintf("%s.%s", selectorType.Recv().String(), selectorType.Obj().Name())] = ExprItem{
+					functionDesc.Exprs = append(functionDesc.Exprs, ExprItem{
 						Receiver: selectorType.Recv().String(),
 						Name:     selectorType.Obj().Name(),
 						Args:     args,
-					}
+					})
 
 				}
 
@@ -165,9 +174,17 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 
 			functionDescs = append(functionDescs, functionDesc)
 
-			s := &GinSwagger{FunctionDesc: &functionDesc}
+			comments := GetGinComments(functionDesc, routeInfos)
+			commentMap := &ast.CommentGroup{List: make([]*ast.Comment, len(comments))}
+			for index, comment := range comments {
+				commentMap.List[index] = &ast.Comment{
+					Text: comment,
+				}
+			}
 
-			decValue.Doc = s.genSwaggerComment(routeInfos)
+			decValue.Doc = commentMap
+
+			fileComments = append(fileComments, commentMap)
 
 			printer.Fprint(os.Stdout, &fileSet, decValue)
 
@@ -176,7 +193,8 @@ func ParseFileAST(name string, tree *ast.File, fileSet token.FileSet, filterStr 
 		}
 
 	}
-
+	tree.Comments = append(tree.Comments, fileComments...)
+	file := NewFile(name, tree)
 	file.Functions = functionDescs
 
 	return file, nil
